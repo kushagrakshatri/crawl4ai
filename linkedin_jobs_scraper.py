@@ -75,9 +75,21 @@ async def scrape_linkedin_jobs(search_query, location=""):
                 await delay(2000);
                 
                 // Scroll multiple times to load more content
-                for(let i = 0; i < 5; i++) {
+                let lastHeight = 0;
+                let unchangedCount = 0;
+                const MAX_UNCHANGED = 3;
+                
+                while (unchangedCount < MAX_UNCHANGED) {
                     window.scrollTo(0, document.body.scrollHeight);
                     await delay(1500 + Math.random() * 1000);  // Randomized delay
+                    
+                    const newHeight = document.body.scrollHeight;
+                    if (newHeight === lastHeight) {
+                        unchangedCount++;
+                    } else {
+                        unchangedCount = 0;
+                    }
+                    lastHeight = newHeight;
                     
                     // Click "Show more" buttons if they exist
                     const showMoreButtons = document.querySelectorAll('button.infinite-scroller__show-more-button');
