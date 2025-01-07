@@ -77,7 +77,7 @@ async def scrape_linkedin_jobs(search_query, location=""):
                 // Scroll multiple times to load more content
                 for(let i = 0; i < 5; i++) {
                     window.scrollTo(0, document.body.scrollHeight);
-                    await delay(1500);  // Longer delay between scrolls
+                    await delay(1500 + Math.random() * 1000);  // Randomized delay
                     
                     // Click "Show more" buttons if they exist
                     const showMoreButtons = document.querySelectorAll('button.infinite-scroller__show-more-button');
@@ -89,7 +89,12 @@ async def scrape_linkedin_jobs(search_query, location=""):
             })();
             """
         ],
-        delay_before_return_html=5000  # Wait 5 seconds before extracting content
+        delay_before_return_html=5000,  # Wait 5 seconds before extracting content
+        wait_until="networkidle",  # Wait for network requests to finish
+        page_timeout=30000,        # 30 second timeout
+        ignore_body_visibility=True,
+        simulate_user=True,        # Help avoid detection
+        override_navigator=True    # Help avoid detection
     )
 
     # Format search URL (using LinkedIn's public jobs page)
@@ -98,8 +103,8 @@ async def scrape_linkedin_jobs(search_query, location=""):
     url = f"https://www.linkedin.com/jobs/search?keywords={search_query}&location={location}&trk=public_jobs_jobs-search-bar_search-submit&position=1&pageNum=0"
 
     try:
-        async with AsyncWebCrawler(config=browser_config, run_config=run_config) as crawler:
-            result = await crawler.arun(url=url)
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            result = await crawler.arun(url=url, config=run_config)
 
             try:
                 # Parse and format results
@@ -119,30 +124,51 @@ async def login_to_linkedin():
     print("===============================")
     print("1. Opening browser...")
     
-    # Basic configuration for login
+    # Create a proper CrawlerRunConfig for login
     login_config = CrawlerRunConfig(
         delay_before_return_html=15000,  # Longer delay for login
-        js_code=[
-            """
+        js_code=["""
             (async () => {
-                await new Promise(r => setTimeout(r, 3000));
-                console.log('Checking for login button...');
-                const signInButton = document.querySelector('.nav__button-secondary');
-                if (signInButton) {
-                    console.log('Found login button, clicking...');
-                    signInButton.click();
-                } else {
-                    console.log('No login button found');
+                const delay = ms => new Promise(r => setTimeout(r, ms));
+                
+                // Wait for initial page load
+                await delay(3000);
+                
+                // Try multiple selectors for the sign-in button
+                const selectors = [
+                    '.nav__button-secondary',
+                    'a[href*="signin"]',
+                    'button[data-tracking-control-name*="sign-in"]'
+                ];
+                
+                for (const selector of selectors) {
+                    const button = document.querySelector(selector);
+                    if (button) {
+                        console.log('Found login button:', selector);
+                        button.click();
+                        break;
+                    }
                 }
+                
+                await delay(2000);  // Wait after click
             })();
-            """
-        ]
+        """],
+        cache_mode=CacheMode.BYPASS,  # Important: bypass cache for login
+        wait_until="networkidle",     # Wait for network to be idle
+        page_timeout=60000,           # Increase timeout for login
+        ignore_body_visibility=True    # Don't wait for body visibility
     )
 
     try:
-        async with AsyncWebCrawler(config=browser_config, run_config=login_config) as crawler:
+        # Initialize the crawler with both configs
+        crawler = AsyncWebCrawler(config=browser_config)
+        async with crawler as browser:
             print("2. Navigating to LinkedIn...")
-            await crawler.arun(url="https://www.linkedin.com")
+            # Pass the login_config to arun
+            result = await browser.arun(
+                url="https://www.linkedin.com",
+                config=login_config  # Pass the config here
+            )
             print("3. Browser navigation complete")
             print("4. Please log in to LinkedIn in the opened browser")
             print("5. After logging in, the script will save your session")
